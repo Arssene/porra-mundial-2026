@@ -116,17 +116,18 @@ def extraer_jugador(ruta):
 def calcular_puntos(jugador, oficiales, baremo):
     pts = 0; det = {}
     # Partidos grupo
-    p = 0
+    p = 0; exactos = 0
     for f, pred in jugador["partidos"].items():
         of = oficiales.get(f"p{f}", "")
         if not of: continue
         r_of = parse_resultado(of); r_p = parse_resultado(pred)
         if not r_of or not r_p: continue
-        if r_of[1]==r_p[1] and r_of[2]==r_p[2]: p += baremo["resultado_exacto"]
+        if r_of[1]==r_p[1] and r_of[2]==r_p[2]:
+            p += baremo["resultado_exacto"]; exactos += 1
         elif r_of[0]==r_p[0] and (r_of[1]==r_p[1] or r_of[2]==r_p[2]): p += baremo["resultado_un_gol"]
         elif r_of[0]==r_p[0]: p += baremo["resultado_signo"]
         elif r_of[1]==r_p[1] or r_of[2]==r_p[2]: p += baremo["un_gol_falla"]
-    det["partidos"] = p; pts += p
+    det["partidos"] = p; det["exactos"] = exactos; pts += p
     # Posiciones grupo
     pp = 0
     for f, pred in jugador["posiciones"].items():
@@ -156,15 +157,15 @@ def calcular_puntos(jugador, oficiales, baremo):
 CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a1628; color: #e0e0e0; min-height: 100vh; }
-header { background: linear-gradient(135deg, #1a3a6e, #c8102e); padding: 18px 30px; display: flex; align-items: center; gap: 15px; }
-header h1 { font-size: 1.5em; color: white; }
-nav { background: #0d1f3c; display: flex; gap: 2px; padding: 0 20px; border-bottom: 2px solid #c8102e; flex-wrap: wrap; }
-nav a { padding: 11px 18px; color: #aaa; text-decoration: none; font-weight: 600; font-size: 0.88em; }
+header { background: linear-gradient(135deg, #1a3a6e, #c8102e); padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 1.3em; color: white; }
+nav { background: #0d1f3c; display: flex; gap: 2px; padding: 0 10px; border-bottom: 2px solid #c8102e; flex-wrap: wrap; }
+nav a { padding: 10px 14px; color: #aaa; text-decoration: none; font-weight: 600; font-size: 0.83em; white-space: nowrap; }
 nav a:hover, nav a.active { color: white; background: #1a3a6e; }
-main { max-width: 1100px; margin: 28px auto; padding: 0 20px; }
-.card { background: #0d1f3c; border: 1px solid #1a3a6e; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
-.card h2 { color: #4a9eff; margin-bottom: 16px; font-size: 1.05em; }
-.btn { padding: 9px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9em; text-decoration: none; display: inline-block; }
+main { max-width: 1100px; margin: 20px auto; padding: 0 12px; }
+.card { background: #0d1f3c; border: 1px solid #1a3a6e; border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+.card h2 { color: #4a9eff; margin-bottom: 14px; font-size: 1.02em; }
+.btn { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.88em; text-decoration: none; display: inline-block; }
 .btn-red { background: #c8102e; color: white; } .btn-red:hover { background: #a00d24; }
 .btn-green { background: #1a7a3e; color: white; } .btn-green:hover { background: #145f30; }
 .btn-blue { background: #1a3a6e; color: white; }
@@ -173,22 +174,30 @@ input[type=file] { color: #aaa; }
 label { display: block; margin-bottom: 4px; color: #aaa; font-size: 0.85em; }
 .form-row { margin-bottom: 10px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 180px; gap: 10px; align-items: center; }
-.tabla { width: 100%; border-collapse: collapse; font-size: 0.88em; }
-.tabla th { background: #1a3a6e; padding: 10px 7px; text-align: center; color: #4a9eff; }
-.tabla td { padding: 8px 7px; border-bottom: 1px solid #1a3a6e; text-align: center; }
+.tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tabla { width: 100%; border-collapse: collapse; font-size: 0.82em; min-width: 540px; }
+.tabla th { background: #1a3a6e; padding: 9px 5px; text-align: center; color: #4a9eff; font-size: 0.8em; white-space: nowrap; }
+.tabla td { padding: 8px 5px; border-bottom: 1px solid #1a3a6e; text-align: center; white-space: nowrap; }
 .tabla tr:hover td { background: #111f3a; }
-.nombre { text-align: left !important; font-weight: 600; color: white; }
+.nombre { text-align: left !important; font-weight: 600; color: white; white-space: normal !important; min-width: 90px; }
 .total { font-weight: 700; color: #ffd700; font-size: 1.05em; }
-.pos-medal { font-size: 1.1em; }
+.exactos { color: #4adf7a; font-weight: 600; }
+.pos-medal { font-size: 1.05em; }
 .msg-ok { padding: 10px 15px; border-radius: 6px; margin-bottom: 14px; background: #1a3a1a; border: 1px solid #1a7a3e; color: #4adf7a; }
 .msg-err { padding: 10px 15px; border-radius: 6px; margin-bottom: 14px; background: #3a1a1a; border: 1px solid #7a1a1a; color: #df4a4a; }
 .sep { border: none; border-top: 1px solid #1a3a6e; margin: 18px 0; }
-.baremo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.baremo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
 .baremo-item label { font-size: 0.8em; }
 .baremo-item input { width: 70px; }
 .tag { background: #1a3a6e; padding: 4px 11px; border-radius: 20px; font-size: 0.82em; display: inline-block; margin: 3px; }
 details summary { cursor: pointer; color: #4a9eff; font-weight: 600; padding: 8px 0; user-select: none; }
-.login-box { max-width: 360px; margin: 80px auto; }
+.login-box { max-width: 360px; margin: 60px auto; }
+@media (max-width: 500px) {
+  header h1 { font-size: 1.05em; }
+  nav a { padding: 8px 9px; font-size: 0.76em; }
+  .card { padding: 12px; }
+  .grid-2 { grid-template-columns: 1fr; }
+}
 """
 
 def base(content, tab="pub", admin=False):
@@ -244,7 +253,9 @@ def clasificacion():
         rows += f"""<tr>
             <td class="pos-medal">{medal}</td>
             <td class="nombre">{nombre}</td>
-            <td>{det['partidos']}</td><td>{det['posiciones']}</td>
+            <td>{det['partidos']}</td>
+            <td class="exactos" title="Resultados exactos">🎯{det['exactos']}</td>
+            <td>{det['posiciones']}</td>
             <td>{det['dieciseisavos']}</td><td>{det['octavos']}</td>
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
             <td>{det['finalistas']}</td><td>{det['campeon']}</td>
@@ -253,15 +264,17 @@ def clasificacion():
 
     content = f"""<div class="card">
         <h2>🏆 Clasificación General — {len(resultados)} participantes</h2>
+        <div class="tabla-wrap">
         <table class="tabla">
             <thead><tr>
                 <th>#</th><th style="text-align:left">Jugador</th>
-                <th>Partidos</th><th>Grupos</th><th>1/16</th><th>1/8</th>
-                <th>1/4</th><th>1/2</th><th>Final</th><th>Campeón</th>
-                <th>TOTAL</th>
+                <th>Pts<br>Partidos</th><th>🎯<br>Exactos</th><th>Grupos</th>
+                <th>1/16</th><th>1/8</th><th>1/4</th><th>1/2</th>
+                <th>Final</th><th>Campeón</th><th>TOTAL</th>
             </tr></thead>
             <tbody>{rows}</tbody>
         </table>
+        </div>
     </div>"""
     return base(content, "pub")
 
