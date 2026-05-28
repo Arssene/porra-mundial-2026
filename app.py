@@ -3,7 +3,7 @@ Porra Mundial 2026 - Versión Render
   / y /clasificacion -> público
   /admin/*           -> protegido con login
 """
-import os, json, unicodedata, secrets
+import os, json, unicodedata, secrets, shutil, glob
 from flask import Flask, request, redirect, session, render_template_string, url_for
 import openpyxl
 
@@ -55,8 +55,38 @@ def load_state():
     }
 
 def save_state(s):
+    # Backup con timestamp antes de sobreescribir (máximo 3)
+    if os.path.exists(STATE_FILE):
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        shutil.copy2(STATE_FILE, STATE_FILE + f".backup_{ts}")
+        # Borrar backups más antiguos si hay más de 3
+        backups = sorted(glob.glob(STATE_FILE + ".backup_*"))
+        for old in backups[:-3]:
+            os.remove(old)
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(s, f, ensure_ascii=False, indent=2)
+
+def list_backups():
+    backups = sorted(glob.glob(STATE_FILE + ".backup_*"), reverse=True)
+    result = []
+    for b in backups:
+        ts = b.split(".backup_")[-1]
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(ts, "%Y%m%d_%H%M")
+            label = dt.strftime("%d/%m/%Y %H:%M")
+        except:
+            label = ts
+        result.append({"path": b, "ts": ts, "label": label})
+    return result
+
+def restore_backup(ts):
+    path = STATE_FILE + f".backup_{ts}"
+    if os.path.exists(path):
+        shutil.copy2(path, STATE_FILE)
+        return True
+    return False
 
 # ── Lógica Excel ──────────────────────────────────────────────────────────────
 def leer_celda(ws, fila):
@@ -255,6 +285,28 @@ def tendencia_jugador(nombre, historial):
             flechas.append('<span style="color:#aaa">➖</span>')
     return " ".join(flechas)
 
+
+def render_backups():
+    bks = list_backups()
+    if not bks:
+        return "<p style='color:#aaa;font-size:0.85em'>⚠️ Aún no hay backups (se crearán al guardar por primera vez)</p>"
+    html = ""
+    for b in bks:
+        label = b["label"]
+        ts = b["ts"]
+        confirm_msg = f"¿Restaurar backup del {label}?"
+        html += (
+            f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'>"
+            f"<span style='color:#4adf7a;font-size:0.85em'>✅ {label}</span>"
+            f"<form method='post' action='/admin/restaurar_backup' style='margin:0' "
+            f"onsubmit='return confirm(\"{confirm_msg}\")'>"
+            f"<input type='hidden' name='ts' value='{ts}'>"
+            f"<button class='btn' style='background:#7a4a00;color:white;padding:4px 10px;font-size:0.8em'"
+            f" type='submit'>⏪ Restaurar</button>"
+            f"</form></div>"
+        )
+    return html
+
 # ── Rutas públicas ────────────────────────────────────────────────────────────
 @app.route("/")
 def clasificacion():
@@ -347,6 +399,15 @@ def admin_home():
         <a href="/admin/cargar" class="btn btn-blue" style="margin-right:8px">📂 Cargar Porras</a>
         <a href="/admin/resultados" class="btn btn-blue" style="margin-right:8px">📋 Resultados</a>
         <a href="/admin/baremo" class="btn btn-blue">⚙️ Baremo</a>
+        <hr class="sep">
+        <h2>🛡 Copia de seguridad</h2>
+        {"<div class='msg-ok'>✅ Backup restaurado correctamente</div>" if request.args.get("msg")=="backup_ok" else ""}
+        {"<div class='msg-err'>⚠️ No hay backup disponible</div>" if request.args.get("msg")=="backup_error" else ""}
+        <p style="color:#aaa;font-size:0.88em;margin-bottom:12px">
+            Cada vez que se guardan resultados, baremo o jugadores se crea automáticamente una copia de seguridad del estado anterior.
+            Si algo sale mal puedes restaurarla aquí.
+        </p>
+{render_backups()}
     </div>"""
     return base(content, "home", admin=True)
 
@@ -541,6 +602,127 @@ def admin_baremo():
         </form>
     </div>"""
     return base(content, "baremo", admin=True)
+
+@app.route("/admin/restaurar_backup", methods=["POST"])
+def admin_restaurar_backup():
+    r = require_admin()
+    if r: return r
+    ts = request.form.get("ts", "")
+    if restore_backup(ts):
+        return redirect("/admin?msg=backup_ok")
+    return redirect("/admin?msg=backup_error")
+
+
+@app.route("/admin/eliminar/<nombre>")
+def admin_eliminar(nombre):
+    r = require_admin()
+    if r: return r
+    s = load_state()
+    if nombre in s["jugadores"]:
+        del s["jugadores"][nombre]
+        # Limpiar del historial también
+        for snap in s.get("historial_rankings", []):
+            snap["ranking"].pop(nombre, None)
+        save_state(s)
+    return redirect("/admin/cargar")
+
+@app.route("/admin/renombrar/<nombre>", methods=["GET","POST"])
+def admin_renombrar(nombre):
+    r = require_admin()
+    if r: return r
+    s = load_state()
+    msg = ""
+    if request.method == "POST":
+        nuevo = request.form.get("nuevo_nombre", "").strip()
+        if nuevo and nuevo != nombre and nombre in s["jugadores"]:
+            s["jugadores"][nuevo] = s["jugadores"].pop(nombre)
+            s["jugadores"][nuevo]["nombre"] = nuevo
+            for snap in s.get("historial_rankings", []):
+                if nombre in snap["ranking"]:
+                    snap["ranking"][nuevo] = snap["ranking"].pop(nombre)
+            save_state(s)
+            return redirect("/admin/cargar")
+        msg = "⚠️ Nombre no válido o sin cambios"
+    content = f"""<div class="card" style="max-width:420px;margin:40px auto">
+        <h2>✏️ Renombrar jugador</h2>
+        {"<div class='msg-err'>"+msg+"</div>" if msg else ""}
+        <p style="color:#aaa;margin-bottom:14px">Nombre actual: <b style="color:white">{nombre}</b></p>
+        <form method="post">
+            <div class="form-row">
+                <label>Nuevo nombre</label>
+                <input type="text" name="nuevo_nombre" value="{nombre}" style="width:100%">
+            </div>
+            <br>
+            <button class="btn btn-green" type="submit">💾 Guardar</button>
+            <a href="/admin/cargar" class="btn btn-blue" style="margin-left:8px">Cancelar</a>
+        </form>
+    </div>"""
+    return base(content, "cargar", admin=True)
+
+@app.route("/admin/jugador/<nombre>")
+def admin_ver_jugador(nombre):
+    r = require_admin()
+    if r: return r
+    s = load_state()
+    if nombre not in s["jugadores"]:
+        return redirect("/admin/cargar")
+    jugador = s["jugadores"][nombre]
+    np = s.get("nombres_partidos", {})
+    filas = ""
+    for f, pred in jugador["partidos"].items():
+        of = s["oficiales"].get(f"p{f}", "")
+        nombre_partido = np.get(str(f), f"Partido {f}")
+        if not of:
+            estado = '<span style="color:#aaa">⏳ Pendiente</span>'
+        else:
+            r_of = parse_resultado(of)
+            r_p  = parse_resultado(pred)
+            if not r_p:
+                estado = '<span style="color:#aaa">— Sin pronóstico</span>'
+            elif not r_of:
+                estado = '<span style="color:#aaa">⏳ Pendiente</span>'
+            elif r_of[1]==r_p[1] and r_of[2]==r_p[2]:
+                estado = '<span style="color:#4adf7a">✅ Exacto</span>'
+            elif r_of[0]==r_p[0] and (r_of[1]==r_p[1] or r_of[2]==r_p[2]):
+                estado = '<span style="color:#a0df4a">🟡 Un gol</span>'
+            elif r_of[0]==r_p[0]:
+                estado = '<span style="color:#dfdf4a">🟡 Signo</span>'
+            elif r_of[1]==r_p[1] or r_of[2]==r_p[2]:
+                estado = '<span style="color:#df944a">🟠 Un gol (falla)</span>'
+            else:
+                estado = '<span style="color:#df4a4a">❌ Fallo</span>'
+        pred_show = pred if pred and pred not in ("-","0|-","") else "—"
+        of_show   = of   if of else "—"
+        filas += f"""<tr>
+            <td style="text-align:left;color:#ddd;font-size:0.85em">{nombre_partido}</td>
+            <td>{pred_show}</td>
+            <td>{of_show}</td>
+            <td>{estado}</td>
+        </tr>"""
+    det = calcular_puntos(jugador, s["oficiales"], s["baremo"])
+    content = f"""<div class="card">
+        <h2>👁 Pronósticos de {nombre}</h2>
+        <p style="color:#aaa;margin-bottom:14px">
+            Total: <b style="color:#ffd700">{det['total']} pts</b> &nbsp;|&nbsp;
+            Exactos: <b style="color:#4adf7a">{det['exactos']}</b> &nbsp;|&nbsp;
+            Campeón: <b style="color:#4a9eff">{jugador['campeon'] or '—'}</b>
+        </p>
+        <div class="tabla-wrap">
+        <table class="tabla" style="min-width:400px">
+            <thead><tr>
+                <th style="text-align:left">Partido</th>
+                <th>Pronóstico</th>
+                <th>Oficial</th>
+                <th>Estado</th>
+            </tr></thead>
+            <tbody>{filas}</tbody>
+        </table>
+        </div>
+        <br>
+        <a href="/admin/cargar" class="btn btn-blue">← Volver</a>
+    </div>"""
+    return base(content, "cargar", admin=True)
+
 
 if __name__ == "__main__":
     import webbrowser
