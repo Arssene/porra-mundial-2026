@@ -192,6 +192,7 @@ label { display: block; margin-bottom: 4px; color: #aaa; font-size: 0.85em; }
 .tag { background: #1a3a6e; padding: 4px 11px; border-radius: 20px; font-size: 0.82em; display: inline-block; margin: 3px; }
 details summary { cursor: pointer; color: #4a9eff; font-weight: 600; padding: 8px 0; user-select: none; }
 .login-box { max-width: 360px; margin: 60px auto; }
+.tendencia { font-size: 1.1em; letter-spacing: 1px; white-space: nowrap; }
 @media (max-width: 500px) {
   header h1 { font-size: 1.05em; }
   nav a { padding: 8px 9px; font-size: 0.76em; }
@@ -232,6 +233,28 @@ def require_admin():
         return redirect("/admin/login")
     return None
 
+
+def tendencia_jugador(nombre, historial):
+    """Devuelve HTML con flechas de las últimas 3 actualizaciones."""
+    if not historial:
+        return ""
+    flechas = []
+    snapshots = historial[-3:]
+    for i in range(1, len(snapshots)):
+        prev = snapshots[i-1]["ranking"].get(nombre)
+        curr = snapshots[i]["ranking"].get(nombre)
+        if prev is None or curr is None:
+            flechas.append('<span style="color:#aaa">➖</span>')
+        elif curr < prev:
+            diff = prev - curr
+            flechas.append(f'<span style="color:#4adf7a">↑{diff}</span>')
+        elif curr > prev:
+            diff = curr - prev
+            flechas.append(f'<span style="color:#df4a4a">↓{diff}</span>')
+        else:
+            flechas.append('<span style="color:#aaa">➖</span>')
+    return " ".join(flechas)
+
 # ── Rutas públicas ────────────────────────────────────────────────────────────
 @app.route("/")
 def clasificacion():
@@ -247,14 +270,17 @@ def clasificacion():
     resultados.sort(key=lambda x: -x[1]["total"])
 
     medallas = ["🥇","🥈","🥉"]
+    historial = s.get("historial_rankings", [])
     rows = ""
     for i, (nombre, det) in enumerate(resultados):
         medal = medallas[i] if i < 3 else f"{i+1}º"
+        tend = tendencia_jugador(nombre, historial)
         rows += f"""<tr>
             <td class="pos-medal">{medal}</td>
             <td class="nombre">{nombre}</td>
+            <td class="tendencia">{tend}</td>
             <td>{det['partidos']}</td>
-            <td class="exactos" title="Resultados exactos">🎯{det['exactos']}</td>
+            <td class="exactos">{det['exactos']}</td>
             <td>{det['posiciones']}</td>
             <td>{det['dieciseisavos']}</td><td>{det['octavos']}</td>
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
@@ -264,10 +290,12 @@ def clasificacion():
 
     content = f"""<div class="card">
         <h2>🏆 Clasificación General — {len(resultados)} participantes</h2>
+        {"<p style=\'color:#aaa;font-size:0.82em;margin-bottom:12px\'>⏱ Última actualización: " + s.get("ultima_actualizacion","—") + "</p>" if s.get("ultima_actualizacion") else ""}
         <div class="tabla-wrap">
         <table class="tabla">
             <thead><tr>
                 <th>#</th><th style="text-align:left">Jugador</th>
+                <th>Tend.</th>
                 <th>Pts<br>Partidos</th><th>🎯<br>Exactos</th><th>Grupos</th>
                 <th>1/16</th><th>1/8</th><th>1/4</th><th>1/2</th>
                 <th>Final</th><th>Campeón</th><th>TOTAL</th>
@@ -391,6 +419,21 @@ def admin_resultados():
     if request.method == "POST":
         for k, v in request.form.items():
             s["oficiales"][k] = v.strip()
+        from datetime import datetime
+        s["ultima_actualizacion"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # Guardar snapshot del ranking actual antes de recalcular
+        if s["jugadores"]:
+            ranking_actual = {}
+            resultados_snap = []
+            for nombre, datos in s["jugadores"].items():
+                det = calcular_puntos(datos, s["oficiales"], s["baremo"])
+                resultados_snap.append((nombre, det["total"]))
+            resultados_snap.sort(key=lambda x: -x[1])
+            for pos, (nombre, _) in enumerate(resultados_snap, start=1):
+                ranking_actual[nombre] = pos
+            historial = s.get("historial_rankings", [])
+            historial.append({"fecha": s["ultima_actualizacion"], "ranking": ranking_actual})
+            s["historial_rankings"] = historial[-3:]  # solo últimas 3
         save_state(s)
         msg = "✅ Resultados guardados"
 
