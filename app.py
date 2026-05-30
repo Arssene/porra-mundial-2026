@@ -47,9 +47,13 @@ def load_state():
         # Asegurar claves por si el archivo es de versión anterior
         s.setdefault("jugadores", {})
         s.setdefault("oficiales", {})
-        s.setdefault("baremo", BAREMO_DEFAULT.copy())
         s.setdefault("nombres_partidos", {})
         s.setdefault("nombres_posiciones", {})
+        # Rellenar claves de baremo nuevas que no estén en el JSON guardado
+        baremo = s.get("baremo", {})
+        for k, v in BAREMO_DEFAULT.items():
+            baremo.setdefault(k, v)
+        s["baremo"] = baremo
         return s
     return {
         "jugadores": {}, "oficiales": {}, "baremo": BAREMO_DEFAULT.copy(),
