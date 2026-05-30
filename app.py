@@ -4,6 +4,7 @@ Porra Mundial 2026 - Versión Render
   /admin/*           -> protegido con login
 """
 import os, json, unicodedata, secrets, shutil, glob
+from zoneinfo import ZoneInfo
 from flask import Flask, request, redirect, session, render_template_string, url_for
 import openpyxl
 
@@ -58,7 +59,7 @@ def save_state(s):
     # Backup con timestamp antes de sobreescribir (máximo 3)
     if os.path.exists(STATE_FILE):
         from datetime import datetime
-        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        ts = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%Y%m%d_%H%M")
         shutil.copy2(STATE_FILE, STATE_FILE + f".backup_{ts}")
         # Borrar backups más antiguos si hay más de 3
         backups = sorted(glob.glob(STATE_FILE + ".backup_*"))
@@ -138,6 +139,7 @@ def extraer_jugador(ruta):
         "semis":         {str(f): leer_celda(ws, f) for f in SEMIS_C},
         "finalistas":    {str(f): leer_celda(ws, f) for f in FINALISTAS_C},
         "campeon":       leer_celda(ws, CAMPEON_C),
+        "goleador":      leer_celda(ws, 253),
     }
     nombres_p = {str(f): (ws.cell(row=f, column=2).value or f"Partido {f}") for f in PARTIDOS_GRUPOS}
     nombres_pos = {str(f): (ws.cell(row=f, column=2).value or f"Posición {f}") for f in POSICIONES_GRUPOS}
@@ -234,6 +236,7 @@ details summary { cursor: pointer; color: #4a9eff; font-weight: 600; padding: 8p
 def base(content, tab="pub", admin=False):
     nav_pub = (
         f'<a href="/" class="{"active" if tab=="pub" else ""}">🏆 Clasificación</a>'
+        f'<a href="/estadisticas" class="{"active" if tab=="stats" else ""}">📊 Estadísticas</a>'
         f'<a href="/baremo" class="{"active" if tab=="baremo_pub" else ""}">📋 Baremo</a>'
     )
     nav_admin = ""
@@ -399,6 +402,143 @@ def baremo_publico():
     </div>"""
     return base(content, "baremo_pub")
 
+
+@app.route("/estadisticas")
+def estadisticas():
+    s = load_state()
+    jugadores = s["jugadores"]
+    np = s.get("nombres_partidos", {})
+
+    if not jugadores:
+        content = '<div class="card"><h2>📊 Estadísticas</h2><p style="color:#aaa">Todavía no hay participantes cargados.</p></div>'
+        return base(content, "stats")
+
+    # --- Campeones votados ---
+    from collections import Counter
+    camp_count = Counter()
+    for j in jugadores.values():
+        c = normalizar(j.get("campeon", ""))
+        if c and c not in ("WF", ""):
+            camp_count[c] += 1
+
+    # --- Goleadores votados ---
+    gol_count = Counter()
+    for j in jugadores.values():
+        g = j.get("goleador", "").strip()
+        if g and g not in ("Escribe un jugador", ""):
+            gol_count[normalizar(g)] += 1
+
+    # --- Partido más acertado (signo) ---
+    partido_aciertos = {}
+    for f in PARTIDOS_GRUPOS:
+        of = s["oficiales"].get(f"p{f}", "")
+        if not of: continue
+        r_of = parse_resultado(of)
+        if not r_of: continue
+        aciertos = 0; total = 0
+        for j in jugadores.values():
+            pred = j["partidos"].get(str(f), "")
+            r_p = parse_resultado(pred)
+            if r_p:
+                total += 1
+                if r_of[0] == r_p[0]: aciertos += 1
+        if total > 0:
+            partido_aciertos[f] = {"aciertos": aciertos, "total": total, "pct": round(aciertos/total*100)}
+
+    mas_acertado = sorted(partido_aciertos.items(), key=lambda x: -x[1]["pct"])[:5]
+
+    # --- Resultado exacto más votado ---
+    exactos_votados = Counter()
+    for j in jugadores.values():
+        for f, pred in j["partidos"].items():
+            r_p = parse_resultado(pred)
+            if not r_p: continue
+            of = s["oficiales"].get(f"p{f}", "")
+            r_of = parse_resultado(of)
+            if r_of and r_of[1]==r_p[1] and r_of[2]==r_p[2]:
+                nombre_p = np.get(str(f), f"Partido {f}")
+                exactos_votados[f"{nombre_p} ({pred})"] += 1
+
+    top_exactos = exactos_votados.most_common(5)
+
+    # --- Generar colores ---
+    COLORS = ["#4a9eff","#c8102e","#4adf7a","#ffd700","#df4a9a","#df944a",
+              "#9a4adf","#4adfdf","#df4a4a","#a0df4a","#4a6eff","#ff9a4a"]
+
+    def pie_chart(counter, title, svg_id):
+        import math
+        if not counter:
+            return "<div class='card'><h2>" + title + "</h2><p style='color:#aaa'>Sin datos todavía</p></div>"
+        total = sum(counter.values())
+        items = counter.most_common(10)
+        cx, cy, r = 120, 120, 100
+        angle = -math.pi/2
+        paths = ""
+        legend = ""
+        for i, (label, val) in enumerate(items):
+            frac = val / total
+            a2 = angle + frac * 2 * math.pi
+            x1 = cx + r * math.cos(angle)
+            y1 = cy + r * math.sin(angle)
+            x2 = cx + r * math.cos(a2)
+            y2 = cy + r * math.sin(a2)
+            large = 1 if frac > 0.5 else 0
+            color = COLORS[i % len(COLORS)]
+            paths += "<path d='M" + str(cx) + "," + str(cy) + " L" + str(round(x1,1)) + "," + str(round(y1,1)) + " A" + str(r) + "," + str(r) + " 0 " + str(large) + ",1 " + str(round(x2,1)) + "," + str(round(y2,1)) + " Z' fill='" + color + "' stroke='#0a1628' stroke-width='2'/>"
+            pct = round(frac*100)
+            legend += "<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px'><div style='width:12px;height:12px;border-radius:2px;background:" + color + ";flex-shrink:0'></div><span style='font-size:0.82em;color:#ddd'>" + label + " <b style='color:#ffd700'>(" + str(val) + ")</b> " + str(pct) + "%</span></div>"
+            angle = a2
+        svg = "<svg viewBox='0 0 240 240' width='200' height='200'>" + paths + "<circle cx='" + str(cx) + "' cy='" + str(cy) + "' r='40' fill='#0d1f3c'/><text x='" + str(cx) + "' y='" + str(cy) + "' text-anchor='middle' dy='5' fill='#fff' font-size='13' font-weight='bold'>" + str(total) + "</text></svg>"
+        return "<div class='card'><h2>" + title + "</h2><div style='display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start'><div>" + svg + "</div><div style='flex:1;min-width:160px'>" + legend + "</div></div></div>"
+
+    # Partidos más acertados
+    if mas_acertado:
+        filas_pa = ""
+        for f, d in mas_acertado:
+            nombre_p = np.get(str(f), "Partido " + str(f))
+            bw = str(d["pct"])
+            filas_pa += (
+                "<div style='margin-bottom:12px'>"
+                "<div style='display:flex;justify-content:space-between;margin-bottom:3px'>"
+                "<span style='color:#ddd;font-size:0.85em'>" + nombre_p + "</span>"
+                "<span style='color:#ffd700;font-weight:600'>" + str(d["aciertos"]) + "/" + str(d["total"]) + " (" + str(d["pct"]) + "%)</span>"
+                "</div>"
+                "<div style='background:#1a3a6e;border-radius:4px;height:10px'>"
+                "<div style='background:#4a9eff;border-radius:4px;height:10px;width:" + bw + "%'></div>"
+                "</div></div>"
+            )
+        card_partidos = "<div class='card'><h2>⚽ Partidos más acertados (signo)</h2>" + filas_pa + "</div>"
+    else:
+        card_partidos = "<div class='card'><h2>⚽ Partidos más acertados</h2><p style='color:#aaa'>Sin resultados oficiales todavía</p></div>"
+
+    # Exactos más votados
+    if top_exactos:
+        filas_ex = ""
+        max_ex = top_exactos[0][1] if top_exactos else 1
+        for label, cnt in top_exactos:
+            bw = str(round(cnt/max_ex*100))
+            filas_ex += (
+                "<div style='margin-bottom:12px'>"
+                "<div style='display:flex;justify-content:space-between;margin-bottom:3px'>"
+                "<span style='color:#ddd;font-size:0.85em'>" + label + "</span>"
+                "<span style='color:#4adf7a;font-weight:600'>" + str(cnt) + " aciertos</span>"
+                "</div>"
+                "<div style='background:#1a3a6e;border-radius:4px;height:10px'>"
+                "<div style='background:#4adf7a;border-radius:4px;height:10px;width:" + bw + "%'></div>"
+                "</div></div>"
+            )
+        card_exactos = "<div class='card'><h2>🎯 Resultados exactos más acertados</h2>" + filas_ex + "</div>"
+    else:
+        card_exactos = "<div class='card'><h2>🎯 Resultados exactos más acertados</h2><p style='color:#aaa'>Sin exactos todavía</p></div>"
+
+    content = (
+        pie_chart(camp_count, "🏆 Campeones votados", "pie_camp") +
+        pie_chart(gol_count, "👟 Goleadores votados", "pie_gol") +
+        card_partidos +
+        card_exactos
+    )
+    return base(content, "stats")
+
 # ── Rutas admin ───────────────────────────────────────────────────────────────
 @app.route("/admin/login", methods=["GET","POST"])
 def login():
@@ -490,26 +630,48 @@ def admin_cargar():
             else:
                 msg = f"⚠️ {'; '.join(errores)}"; msg_class = "msg-err"
 
-    tags = "".join(f'<span class="tag">✔ {n}</span>' for n in s["jugadores"])
-    lista = tags or "<p style='color:#666'>Ninguno todavía</p>"
-    content = f"""<div class="card">
-        <h2>📂 Cargar archivos de porra</h2>
-        {"<div class='"+msg_class+"'>"+msg+"</div>" if msg else ""}
-        <form method="post" enctype="multipart/form-data">
-            <div class="form-row">
-                <label>Selecciona uno o varios archivos Excel (.xlsx)</label>
-                <input type="file" name="archivos" multiple accept=".xlsx">
-            </div>
-            <button class="btn btn-red" type="submit">⬆ Cargar</button>
-        </form>
-        <hr class="sep">
-        <h2>Participantes ({len(s["jugadores"])})</h2>
-        <div style="margin-bottom:16px">{lista}</div>
-        <form method="post">
-            <button class="btn btn-blue" name="limpiar" value="1"
-                onclick="return confirm('¿Borrar todos los jugadores?')">🗑 Limpiar todo</button>
-        </form>
-    </div>"""
+    from urllib.parse import quote
+    filas_j = ""
+    for nombre in s["jugadores"]:
+        enc = quote(nombre)
+        safe = nombre.replace("'", "\\'")
+        filas_j += (
+            "<tr>"
+            "<td style='text-align:left;color:white;font-weight:600'>" + nombre + "</td>"
+            "<td style='white-space:nowrap'>"
+            "<a href='/admin/jugador/" + enc + "' class='btn btn-blue' style='padding:4px 10px;font-size:0.8em;margin-right:4px'>👁 Ver</a> "
+            "<a href='/admin/renombrar/" + enc + "' class='btn btn-blue' style='padding:4px 10px;font-size:0.8em;margin-right:4px'>✏️ Renombrar</a> "
+            "<a href='/admin/eliminar/" + enc + "' class='btn' style='padding:4px 10px;font-size:0.8em;background:#7a1a1a;color:white' "
+            "onclick='return confirm(\"Eliminar a " + safe + "?\")'>🗑 Eliminar</a>"
+            "</td></tr>"
+        )
+    tabla_j = (
+        "<div class='tabla-wrap'><table class='tabla' style='min-width:300px'>"
+        "<thead><tr><th style='text-align:left'>Jugador</th><th>Acciones</th></tr></thead>"
+        "<tbody>" + filas_j + "</tbody></table></div>"
+    ) if filas_j else "<p style='color:#666'>Ninguno todavía</p>"
+
+    n_j = len(s["jugadores"])
+    msg_html = "<div class='" + msg_class + "'>" + msg + "</div>" if msg else ""
+    content = (
+        "<div class='card'>"
+        "<h2>📂 Cargar archivos de porra</h2>"
+        + msg_html +
+        "<form method='post' enctype='multipart/form-data'>"
+        "<div class='form-row'>"
+        "<label>Selecciona uno o varios archivos Excel (.xlsx)</label>"
+        "<input type='file' name='archivos' multiple accept='.xlsx'>"
+        "</div>"
+        "<button class='btn btn-red' type='submit'>⬆ Cargar</button>"
+        "</form>"
+        "<hr class='sep'>"
+        "<h2>Participantes (" + str(n_j) + ")</h2>"
+        "<div style='margin-bottom:16px'>" + tabla_j + "</div>"
+        "<form method='post'>"
+        "<button class='btn btn-blue' name='limpiar' value='1' "
+        "onclick='return confirm(\"¿Borrar todos los jugadores?\")'>🗑 Limpiar todo</button>"
+        "</form></div>"
+    )
     return base(content, "cargar", admin=True)
 
 @app.route("/admin/resultados", methods=["GET","POST"])
@@ -522,7 +684,7 @@ def admin_resultados():
         for k, v in request.form.items():
             s["oficiales"][k] = v.strip()
         from datetime import datetime
-        s["ultima_actualizacion"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+        s["ultima_actualizacion"] = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%d/%m/%Y %H:%M")
         # Guardar snapshot del ranking actual antes de recalcular
         if s["jugadores"]:
             ranking_actual = {}
