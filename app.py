@@ -232,7 +232,10 @@ details summary { cursor: pointer; color: #4a9eff; font-weight: 600; padding: 8p
 """
 
 def base(content, tab="pub", admin=False):
-    nav_pub = f'<a href="/" class="{"active" if tab=="pub" else ""}">🏆 Clasificación</a>'
+    nav_pub = (
+        f'<a href="/" class="{"active" if tab=="pub" else ""}">🏆 Clasificación</a>'
+        f'<a href="/baremo" class="{"active" if tab=="baremo_pub" else ""}">📋 Baremo</a>'
+    )
     nav_admin = ""
     if admin:
         nav_admin = f'''
@@ -357,6 +360,44 @@ def clasificacion():
         </div>
     </div>"""
     return base(content, "pub")
+
+
+@app.route("/baremo")
+def baremo_publico():
+    s = load_state()
+    b = s["baremo"]
+    items = [
+        ("Resultado exacto (ej: 2-1 ✓ 2-1)", b["resultado_exacto"]),
+        ("Resultado + un gol (ej: 2-1 ✓ 2-0)", b["resultado_un_gol"]),
+        ("Signo acertado (ej: 2-1 ✓ 1-0)", b["resultado_signo"]),
+        ("Falla resultado, acierta un gol", b["un_gol_falla"]),
+        ("Posición en grupo acertada", b["posicion_grupo"]),
+        ("Clasificado a dieciseisavos", b["dieciseisavos"]),
+        ("Clasificado a octavos", b["octavos"]),
+        ("Clasificado a cuartos", b["cuartos"]),
+        ("Semifinalista", b["semifinales"]),
+        ("Finalista", b["finalistas"]),
+        ("Campeón", b["campeon"]),
+    ]
+    filas = ""
+    for desc, pts in items:
+        filas += f"""<tr>
+            <td style="text-align:left;color:#ddd">{desc}</td>
+            <td style="color:#ffd700;font-weight:700;font-size:1.1em">{pts} pts</td>
+        </tr>"""
+    content = f"""<div class="card">
+        <h2>📋 Baremo de puntuación</h2>
+        <div class="tabla-wrap">
+        <table class="tabla" style="min-width:300px">
+            <thead><tr>
+                <th style="text-align:left">Concepto</th>
+                <th>Puntos</th>
+            </tr></thead>
+            <tbody>{filas}</tbody>
+        </table>
+        </div>
+    </div>"""
+    return base(content, "baremo_pub")
 
 # ── Rutas admin ───────────────────────────────────────────────────────────────
 @app.route("/admin/login", methods=["GET","POST"])
