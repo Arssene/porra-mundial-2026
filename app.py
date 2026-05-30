@@ -5,7 +5,7 @@ Porra Mundial 2026 - Versión Render
 """
 import os, json, unicodedata, secrets, shutil, glob
 from zoneinfo import ZoneInfo
-from flask import Flask, request, redirect, session, render_template_string, url_for
+from flask import Flask, request, redirect, session, render_template_string, url_for, send_file
 import openpyxl
 
 app = Flask(__name__)
@@ -318,7 +318,7 @@ def render_backups():
             f"<input type='hidden' name='ts' value='{ts}'>"
             f"<button class='btn' style='background:#7a4a00;color:white;padding:4px 10px;font-size:0.8em'"
             f" type='submit'>⏪ Restaurar</button>"
-            f"</form></div>"
+            f"</form>"" <a href='/admin/descargar_json' class='btn btn-blue' style='margin-left:8px'>📥 Descargar JSON</a>""</div>"
         )
     return html
 
@@ -683,6 +683,15 @@ def admin_cargar():
         "</form></div>"
     )
     return base(content, "cargar", admin=True)
+
+@app.route("/admin/descargar_json")
+def admin_descargar_json():
+    r = require_admin()
+    if r: return r
+    if not os.path.exists(STATE_FILE):
+        return redirect("/admin/cargar")
+    return send_file(STATE_FILE, as_attachment=True, download_name="state.json")
+
 
 @app.route("/admin/resultados", methods=["GET","POST"])
 def admin_resultados():
