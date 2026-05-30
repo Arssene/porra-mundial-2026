@@ -36,6 +36,7 @@ BAREMO_DEFAULT = {
     "resultado_exacto": 6, "resultado_un_gol": 4, "resultado_signo": 3,
     "un_gol_falla": 1, "posicion_grupo": 2, "dieciseisavos": 3,
     "octavos": 6, "cuartos": 10, "semifinales": 15, "finalistas": 20, "campeon": 40,
+    "bota_oro": 10,
 }
 
 # ── Persistencia ──────────────────────────────────────────────────────────────
@@ -182,6 +183,10 @@ def calcular_puntos(jugador, oficiales, baremo):
     of_cam = normalizar(oficiales.get("campeon",""))
     cam = baremo["campeon"] if of_cam and normalizar(jugador["campeon"])==of_cam else 0
     det["campeon"] = cam; pts += cam
+    # Bota de Oro
+    of_gol = normalizar(oficiales.get("bota_oro",""))
+    gol = baremo["bota_oro"] if of_gol and normalizar(jugador.get("goleador",""))==of_gol else 0
+    det["bota_oro"] = gol; pts += gol
     det["total"] = pts
     return det
 
@@ -425,8 +430,9 @@ def estadisticas():
     gol_count = Counter()
     for j in jugadores.values():
         g = j.get("goleador", "").strip()
-        if g and g not in ("Escribe un jugador", ""):
-            gol_count[normalizar(g)] += 1
+        if g and g not in ("Escribe un jugador", "") and normalizar(g) != "ESCRIBE UN JUGADOR":
+            # Use title case for display
+            gol_count[g.strip().title()] += 1
 
     # --- Partido más acertado (signo) ---
     partido_aciertos = {}
@@ -752,10 +758,14 @@ def admin_resultados():
             {fase_inputs(CUARTOS_C,"cua_","Clasificados a Cuartos")}
             {fase_inputs(SEMIS_C,"sem_","Semifinalistas")}
             {fase_inputs(FINALISTAS_C,"fin_","Finalistas")}
-            <h3 style='color:#4a9eff;margin:14px 0 8px'>🥇 Campeón</h3>
+            <h3 style='color:#4a9eff;margin:14px 0 8px'>🥇 Campeón y Bota de Oro</h3>
             <div class="form-row grid-2">
                 <label style="color:#ddd">Campeón del Mundial</label>
                 <input type="text" name="campeon" value="{campeon_val}" placeholder="Equipo" style="width:160px">
+            </div>
+            <div class="form-row grid-2">
+                <label style="color:#ddd">👟 Bota de Oro (máximo goleador)</label>
+                <input type="text" name="bota_oro" value="{s['oficiales'].get('bota_oro','')}" placeholder="Nombre jugador" style="width:160px">
             </div>
             </div>
         </details>
@@ -790,6 +800,7 @@ def admin_baremo():
         ("semifinales","Semifinalista"),
         ("finalistas","Finalista"),
         ("campeon","Campeón"),
+        ("bota_oro","Bota de Oro (máximo goleador)"),
     ]
     inputs = "".join(f"""<div class="baremo-item">
         <label>{desc}</label>
@@ -862,13 +873,22 @@ def admin_renombrar(nombre):
     </div>"""
     return base(content, "cargar", admin=True)
 
-@app.route("/admin/jugador/<nombre>")
+@app.route("/admin/jugador/<nombre>", methods=["GET","POST"])
 def admin_ver_jugador(nombre):
     r = require_admin()
     if r: return r
     s = load_state()
     if nombre not in s["jugadores"]:
         return redirect("/admin/cargar")
+
+    # Guardar edición de goleador
+    msg_gol = ""
+    if request.method == "POST":
+        nuevo_gol = request.form.get("goleador", "").strip()
+        s["jugadores"][nombre]["goleador"] = nuevo_gol
+        save_state(s)
+        msg_gol = "✅ Goleador actualizado"
+
     jugador = s["jugadores"][nombre]
     np = s.get("nombres_partidos", {})
     filas = ""
@@ -902,28 +922,72 @@ def admin_ver_jugador(nombre):
             <td>{of_show}</td>
             <td>{estado}</td>
         </tr>"""
+    of_d16  = {normalizar(v) for k,v in s["oficiales"].items() if k.startswith("d16_") and v}
+    of_oct  = {normalizar(v) for k,v in s["oficiales"].items() if k.startswith("oct_") and v}
+    of_cua  = {normalizar(v) for k,v in s["oficiales"].items() if k.startswith("cua_") and v}
+    of_sem  = {normalizar(v) for k,v in s["oficiales"].items() if k.startswith("sem_") and v}
+    of_fin  = {normalizar(v) for k,v in s["oficiales"].items() if k.startswith("fin_") and v}
+    of_cam  = normalizar(s["oficiales"].get("campeon", ""))
+
+    def elim_filas(key, of_set, label_fase):
+        rows = ""
+        for pred in jugador[key].values():
+            if not pred or pred in ("-", ""): continue
+            pred_n = normalizar(pred)
+            if not of_set:
+                estado = "<span style='color:#aaa'>⏳ Pendiente</span>"
+            elif pred_n in of_set:
+                estado = "<span style='color:#4adf7a'>✅ Acierto</span>"
+            else:
+                estado = "<span style='color:#df4a4a'>❌ Fallo</span>"
+            rows += "<tr><td style='text-align:left;color:#ddd;font-size:0.85em'>" + label_fase + "</td><td>" + pred + "</td><td>" + estado + "</td></tr>"
+        return rows
+
+    filas_elim = (
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Dieciseisavos</td></tr>" + elim_filas("dieciseisavos", of_d16, "Clasificado") +
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Octavos</td></tr>" + elim_filas("octavos", of_oct, "Clasificado") +
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Cuartos</td></tr>" + elim_filas("cuartos", of_cua, "Clasificado") +
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Semifinales</td></tr>" + elim_filas("semis", of_sem, "Clasificado") +
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Finalistas</td></tr>" + elim_filas("finalistas", of_fin, "Clasificado")
+    )
+
+    cam_pred = jugador.get("campeon", "") or "—"
+    gol_pred = jugador.get("goleador", "") or "—"
+    if not of_cam:
+        cam_estado = "<span style='color:#aaa'>⏳ Pendiente</span>"
+    elif normalizar(cam_pred) == of_cam:
+        cam_estado = "<span style='color:#4adf7a'>✅ Acierto</span>"
+    else:
+        cam_estado = "<span style='color:#df4a4a'>❌ Fallo</span>"
+
+    filas_honor = (
+        "<tr><td colspan='3' style='color:#4a9eff;font-weight:600;padding-top:12px'>Cuadro de Honor</td></tr>"
+        "<tr><td style='text-align:left;color:#ddd;font-size:0.85em'>🥇 Campeón</td><td>" + cam_pred + "</td><td>" + cam_estado + "</td></tr>"
+        "<tr><td style='text-align:left;color:#ddd;font-size:0.85em'>👟 Bota de Oro</td>""<td colspan='2'>""<form method='post' style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>""<span style='color:#aaa;font-size:0.8em'>Original: <i>" + gol_pred + "</i></span>""<input type='text' name='goleador' value='" + gol_pred + "' style='width:160px;padding:4px 8px'>""<button class='btn btn-green' type='submit' style='padding:4px 10px;font-size:0.8em'>💾 Guardar</button>""</form></td></tr>"
+    )
+
     det = calcular_puntos(jugador, s["oficiales"], s["baremo"])
-    content = f"""<div class="card">
-        <h2>👁 Pronósticos de {nombre}</h2>
-        <p style="color:#aaa;margin-bottom:14px">
-            Total: <b style="color:#ffd700">{det['total']} pts</b> &nbsp;|&nbsp;
-            Exactos: <b style="color:#4adf7a">{det['exactos']}</b> &nbsp;|&nbsp;
-            Campeón: <b style="color:#4a9eff">{jugador['campeon'] or '—'}</b>
-        </p>
-        <div class="tabla-wrap">
-        <table class="tabla" style="min-width:400px">
-            <thead><tr>
-                <th style="text-align:left">Partido</th>
-                <th>Pronóstico</th>
-                <th>Oficial</th>
-                <th>Estado</th>
-            </tr></thead>
-            <tbody>{filas}</tbody>
-        </table>
-        </div>
-        <br>
-        <a href="/admin/cargar" class="btn btn-blue">← Volver</a>
-    </div>"""
+    content = (
+        "<div class='card'>"
+        + ("<div class='msg-ok'>" + msg_gol + "</div>" if msg_gol else "") +
+        "<h2>👁 Pronósticos de " + nombre + "</h2>"
+        "<p style='color:#aaa;margin-bottom:14px'>"
+        "Total: <b style='color:#ffd700'>" + str(det["total"]) + " pts</b> &nbsp;|&nbsp; "
+        "Exactos: <b style='color:#4adf7a'>" + str(det["exactos"]) + "</b> &nbsp;|&nbsp; "
+        "Campeón: <b style='color:#4a9eff'>" + cam_pred + "</b>"
+        "</p>"
+        "<details open><summary style='color:#4a9eff;font-weight:600;padding:8px 0;cursor:pointer'>▶ Partidos de Grupo</summary>"
+        "<div class='tabla-wrap'><table class='tabla' style='min-width:400px'>"
+        "<thead><tr><th style='text-align:left'>Partido</th><th>Pronóstico</th><th>Oficial</th><th>Estado</th></tr></thead>"
+        "<tbody>" + filas + "</tbody></table></div></details>"
+        "<hr class='sep'>"
+        "<details><summary style='color:#4a9eff;font-weight:600;padding:8px 0;cursor:pointer'>▶ Eliminatorias y Cuadro de Honor</summary>"
+        "<div class='tabla-wrap'><table class='tabla' style='min-width:300px'>"
+        "<thead><tr><th style='text-align:left'>Fase</th><th>Pronóstico</th><th>Estado</th></tr></thead>"
+        "<tbody>" + filas_elim + filas_honor + "</tbody></table></div></details>"
+        "<br><a href='/admin/cargar' class='btn btn-blue'>← Volver</a>"
+        "</div>"
+    )
     return base(content, "cargar", admin=True)
 
 
