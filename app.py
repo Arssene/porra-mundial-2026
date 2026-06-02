@@ -345,6 +345,7 @@ def clasificacion():
         rows += f"""<tr>
             <td class="pos-medal">{medal}</td>
             <td class="nombre">{nombre}</td>
+            <td class="total">{det['total']}</td>
             <td class="tendencia">{tend}</td>
             <td>{det['partidos']}</td>
             <td class="exactos">{det['exactos']}</td>
@@ -352,7 +353,6 @@ def clasificacion():
             <td>{det['dieciseisavos']}</td><td>{det['octavos']}</td>
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
             <td>{det['finalistas']}</td><td>{det['campeon']}</td>
-            <td class="total">{det['total']}</td>
         </tr>"""
 
     content = f"""<div class="card">
@@ -362,10 +362,10 @@ def clasificacion():
         <table class="tabla">
             <thead><tr>
                 <th>#</th><th style="text-align:left">Jugador</th>
-                <th>Tend.</th>
-                <th>Pts<br>Partidos</th><th>🎯<br>Exactos</th><th>Grupos</th>
+                <th>TOTAL</th><th>Tend.</th>
+                <th>Pts<br>Grupos</th><th>🎯<br>Exactos</th><th>Clasif.<br>Grupos</th>
                 <th>1/16</th><th>1/8</th><th>1/4</th><th>1/2</th>
-                <th>Final</th><th>Campeón</th><th>TOTAL</th>
+                <th>Final</th><th>Campeón</th>
             </tr></thead>
             <tbody>{rows}</tbody>
         </table>
