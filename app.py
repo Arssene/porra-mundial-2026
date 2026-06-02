@@ -390,6 +390,7 @@ def baremo_publico():
         ("Semifinalista", b["semifinales"]),
         ("Finalista", b["finalistas"]),
         ("Campeón", b["campeon"]),
+        ("👟 Bota de Oro (máximo goleador)", b["bota_oro"]),
     ]
     filas = ""
     for desc, pts in items:
