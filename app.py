@@ -369,8 +369,8 @@ def clasificacion():
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
             <td>{det['finalistas']}</td><td>{det['campeon']}</td>
             <td style='font-size:0.78em;color:#ffd700'>{datos.get('campeon','') or '—'}</td>
-            <td style='font-size:0.78em;color:#aaa'>{list(datos.get('finalistas',{{}}).values())[0] if datos.get('finalistas') else '—'}</td>
-            <td style='font-size:0.78em;color:#aaa'>{list(datos.get('finalistas',{{}}).values())[1] if len(datos.get('finalistas',{{}}))>1 else '—'}</td>
+            <td style='font-size:0.78em;color:#aaa'>{_fin[0] if (_fin:=list(datos.get('finalistas',{}).values())) else '—'}</td>
+            <td style='font-size:0.78em;color:#aaa'>{_fin[1] if len(_fin)>1 else '—'}</td>
             <td style='font-size:0.78em;color:#4adf7a'>{datos.get('goleador','') or '—'}</td>
         </tr>"""
 
