@@ -348,13 +348,13 @@ def clasificacion():
     resultados = []
     for nombre, datos in s["jugadores"].items():
         det = calcular_puntos(datos, s["oficiales"], s["baremo"])
-        resultados.append((nombre, det))
+        resultados.append((nombre, det, datos))
     resultados.sort(key=lambda x: -x[1]["total"])
 
     medallas = ["🥇","🥈","🥉"]
     historial = s.get("historial_rankings", [])
     rows = ""
-    for i, (nombre, det) in enumerate(resultados):
+    for i, (nombre, det, datos) in enumerate(resultados):
         medal = medallas[i] if i < 3 else f"{i+1}º"
         tend = tendencia_jugador(nombre, historial)
         rows += f"""<tr>
@@ -368,6 +368,10 @@ def clasificacion():
             <td>{det['dieciseisavos']}</td><td>{det['octavos']}</td>
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
             <td>{det['finalistas']}</td><td>{det['campeon']}</td>
+            <td style='font-size:0.78em;color:#ffd700'>{datos.get('campeon','') or '—'}</td>
+            <td style='font-size:0.78em;color:#aaa'>{list(datos.get('finalistas',{{}}).values())[0] if datos.get('finalistas') else '—'}</td>
+            <td style='font-size:0.78em;color:#aaa'>{list(datos.get('finalistas',{{}}).values())[1] if len(datos.get('finalistas',{{}}))>1 else '—'}</td>
+            <td style='font-size:0.78em;color:#4adf7a'>{datos.get('goleador','') or '—'}</td>
         </tr>"""
 
     content = f"""<div class="card">
@@ -380,7 +384,7 @@ def clasificacion():
                 <th>TOTAL</th><th>Tend.</th>
                 <th>Pts<br>Grupos</th><th>🎯<br>Exactos</th><th>Clasif.<br>Grupos</th>
                 <th>1/16</th><th>1/8</th><th>1/4</th><th>1/2</th>
-                <th>Final</th><th>Campeón</th>
+                <th>Final</th><th>Campeón</th><th style="font-size:0.75em">Campeón</th><th style="font-size:0.75em">Finalista</th><th style="font-size:0.75em">Finalista</th><th style="font-size:0.75em">Goleador</th>
             </tr></thead>
             <tbody>{rows}</tbody>
         </table>
