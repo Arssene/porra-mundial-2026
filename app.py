@@ -125,29 +125,44 @@ def normalizar(s):
 
 def extraer_jugador(ruta):
     try:
-        wb = openpyxl.load_workbook(ruta, data_only=True)
+        wb = openpyxl.load_workbook(ruta, data_only=True, read_only=True)
     except Exception as e:
         return None, str(e)
     if "Pool" not in wb.sheetnames:
+        wb.close()
         return None, "No tiene hoja Pool"
     ws = wb["Pool"]
-    nombre = leer_celda(ws, 5)
+
+    # Leer solo las filas que necesitamos
+    filas_needed = set([5, 253, CAMPEON_C] + PARTIDOS_GRUPOS + POSICIONES_GRUPOS +
+                       DIECISEISAVOS_C + OCTAVOS_C + CUARTOS_C + SEMIS_C + FINALISTAS_C)
+    celdas = {}
+    for row in ws.iter_rows(min_row=1, max_row=max(filas_needed), min_col=2, max_col=3):
+        for cell in row:
+            if cell.row in filas_needed:
+                celdas[(cell.row, cell.column)] = str(cell.value).strip() if cell.value is not None else ""
+    wb.close()
+
+    def get(fila, col=3):
+        return celdas.get((fila, col), "")
+
+    nombre = get(5)
     if not nombre or nombre in ("Nombre", ""):
         nombre = os.path.splitext(os.path.basename(ruta))[0]
     datos = {
         "nombre": nombre,
-        "partidos":      {str(f): leer_celda(ws, f) for f in PARTIDOS_GRUPOS},
-        "posiciones":    {str(f): leer_celda(ws, f) for f in POSICIONES_GRUPOS},
-        "dieciseisavos": {str(f): leer_celda(ws, f) for f in DIECISEISAVOS_C},
-        "octavos":       {str(f): leer_celda(ws, f) for f in OCTAVOS_C},
-        "cuartos":       {str(f): leer_celda(ws, f) for f in CUARTOS_C},
-        "semis":         {str(f): leer_celda(ws, f) for f in SEMIS_C},
-        "finalistas":    {str(f): leer_celda(ws, f) for f in FINALISTAS_C},
-        "campeon":       leer_celda(ws, CAMPEON_C),
-        "goleador":      leer_celda(ws, 253),
+        "partidos":      {str(f): get(f) for f in PARTIDOS_GRUPOS},
+        "posiciones":    {str(f): get(f) for f in POSICIONES_GRUPOS},
+        "dieciseisavos": {str(f): get(f) for f in DIECISEISAVOS_C},
+        "octavos":       {str(f): get(f) for f in OCTAVOS_C},
+        "cuartos":       {str(f): get(f) for f in CUARTOS_C},
+        "semis":         {str(f): get(f) for f in SEMIS_C},
+        "finalistas":    {str(f): get(f) for f in FINALISTAS_C},
+        "campeon":       get(CAMPEON_C),
+        "goleador":      get(253),
     }
-    nombres_p = {str(f): (ws.cell(row=f, column=2).value or f"Partido {f}") for f in PARTIDOS_GRUPOS}
-    nombres_pos = {str(f): (ws.cell(row=f, column=2).value or f"Posición {f}") for f in POSICIONES_GRUPOS}
+    nombres_p   = {str(f): (get(f, 2) or f"Partido {f}") for f in PARTIDOS_GRUPOS}
+    nombres_pos = {str(f): (get(f, 2) or f"Posición {f}") for f in POSICIONES_GRUPOS}
     return datos, None, nombres_p, nombres_pos
 
 def calcular_puntos(jugador, oficiales, baremo):
