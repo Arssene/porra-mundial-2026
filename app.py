@@ -270,6 +270,7 @@ def base(content, tab="pub", admin=False):
         <a href="/admin/cargar" class="{"active" if tab=="cargar" else ""}">📂 Cargar Porras</a>
         <a href="/admin/resultados" class="{"active" if tab=="resultados" else ""}">📋 Resultados</a>
         <a href="/admin/baremo" class="{"active" if tab=="baremo" else ""}">⚙️ Baremo</a>
+        <a href="/admin/goleadores" class="{"active" if tab=="goleadores" else ""}">👟 Goleadores</a>
         <a href="/admin/logout" style="margin-left:auto;color:#c8102e">Salir</a>'''
     else:
         nav_admin = '<a href="/admin" style="margin-left:auto;color:#4a9eff;font-size:0.8em">Admin</a>'
