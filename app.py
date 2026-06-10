@@ -844,6 +844,66 @@ def admin_resultados():
     </div>"""
     return base(content, "resultados", admin=True)
 
+@app.route("/admin/goleadores", methods=["GET","POST"])
+def admin_goleadores():
+    r = require_admin()
+    if r: return r
+    s = load_state()
+    msg = ""
+
+    if request.method == "POST":
+        for nombre, jugador in s["jugadores"].items():
+            key = "gol_" + nombre
+            if key in request.form:
+                nuevo = request.form[key].strip()
+                jugador["goleador"] = nuevo
+        save_state(s)
+        msg = "✅ Goleadores guardados"
+
+    # Build table sorted by goleador name for easy review
+    jugadores_sorted = sorted(
+        s["jugadores"].items(),
+        key=lambda x: (x[1].get("goleador","") or "").upper()
+    )
+
+    filas = ""
+    for nombre, jugador in jugadores_sorted:
+        gol = jugador.get("goleador", "") or ""
+        key = "gol_" + nombre
+        color = "#aaa" if not gol or gol == "Escribe un jugador" else "#4adf7a"
+        filas += (
+            "<tr>"
+            "<td style='text-align:left;color:white;font-size:0.88em'>" + nombre + "</td>"
+            "<td><input type='text' name='" + key + "' value='" + gol.replace("'", "&#39;") + "' "
+            "style='width:200px;padding:4px 8px;color:" + color + "'></td>"
+            "</tr>"
+        )
+
+    msg_html = "<div class='msg-ok'>" + msg + "</div>" if msg else ""
+    content = (
+        "<div class='card'>"
+        "<h2>👟 Editar Goleadores</h2>"
+        "<p style='color:#aaa;font-size:0.85em;margin-bottom:14px'>"
+        "Ordenados por goleador para que puedas agrupar y normalizar fácilmente. "
+        "Edita los que necesites y guarda todo con un clic.</p>"
+        + msg_html +
+        "<form method='post'>"
+        "<div class='tabla-wrap'>"
+        "<table class='tabla' style='min-width:350px'>"
+        "<thead><tr>"
+        "<th style='text-align:left'>Jugador</th>"
+        "<th style='text-align:left'>Goleador</th>"
+        "</tr></thead>"
+        "<tbody>" + filas + "</tbody>"
+        "</table></div>"
+        "<br>"
+        "<button class='btn btn-green' type='submit'>💾 Guardar todos</button>"
+        "</form>"
+        "</div>"
+    )
+    return base(content, "goleadores", admin=True)
+
+
 @app.route("/admin/baremo", methods=["GET","POST"])
 def admin_baremo():
     r = require_admin()
