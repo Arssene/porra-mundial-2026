@@ -636,6 +636,27 @@ def admin_cargar():
             s["nombres_posiciones"] = {}
             save_state(s)
             msg = "✅ Todos los jugadores eliminados"
+        elif "json_file" in request.files and request.files["json_file"].filename:
+            jf = request.files["json_file"]
+            try:
+                nuevo = json.load(jf.stream)
+                # Validar estructura mínima
+                if "jugadores" not in nuevo:
+                    raise ValueError("El JSON no tiene la clave 'jugadores'")
+                # Rellenar claves de baremo que falten
+                baremo = nuevo.get("baremo", {})
+                for k, v in BAREMO_DEFAULT.items():
+                    baremo.setdefault(k, v)
+                nuevo["baremo"] = baremo
+                nuevo.setdefault("oficiales", {})
+                nuevo.setdefault("nombres_partidos", {})
+                nuevo.setdefault("nombres_posiciones", {})
+                save_state(nuevo)
+                s = nuevo
+                msg = f"✅ JSON cargado correctamente: {len(nuevo['jugadores'])} jugadores"
+            except Exception as e:
+                msg = f"⚠️ Error al leer el JSON: {e}"
+                msg_class = "msg-err"
         else:
             archivos = request.files.getlist("archivos")
             cargados = []; errores = []
@@ -694,6 +715,21 @@ def admin_cargar():
         "</div>"
         "<button class='btn btn-red' type='submit'>⬆ Cargar</button>"
         "</form>"
+        "<hr class='sep'>"
+        "<details><summary>▶ Subir JSON completo (avanzado)</summary>"
+        "<div style='margin-top:10px'>"
+        "<p style='color:#aaa;font-size:0.85em;margin-bottom:10px'>"
+        "Sube un archivo state.json generado en local. <b>Esto reemplaza todos los datos actuales</b> "
+        "(jugadores, resultados, baremo e historial)."
+        "</p>"
+        "<form method='post' enctype='multipart/form-data' "
+        "onsubmit=\"return confirm('Esto reemplazará TODOS los datos actuales por los del JSON. ¿Continuar?')\">"
+        "<div class='form-row'>"
+        "<input type='file' name='json_file' accept='.json'>"
+        "</div>"
+        "<button class='btn btn-green' type='submit'>📤 Subir JSON</button>"
+        "</form>"
+        "</div></details>"
         "<hr class='sep'>"
         "<h2>Participantes (" + str(n_j) + ")</h2>"
         "<div style='margin-bottom:16px'>" + tabla_j + "</div>"
