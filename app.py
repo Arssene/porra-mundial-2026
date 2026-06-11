@@ -501,7 +501,7 @@ def estadisticas():
         if not counter:
             return "<div class='card'><h2>" + title + "</h2><p style='color:#aaa'>Sin datos todavía</p></div>"
         total = sum(counter.values())
-        items = counter.most_common(10)
+        items = counter.most_common()
         cx, cy, r = 120, 120, 100
         angle = -math.pi/2
         paths = ""
