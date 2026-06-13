@@ -168,18 +168,19 @@ def extraer_jugador(ruta):
 def calcular_puntos(jugador, oficiales, baremo):
     pts = 0; det = {}
     # Partidos grupo
-    p = 0; exactos = 0
+    p = 0; exactos = 0; signos = 0
     for f, pred in jugador["partidos"].items():
         of = oficiales.get(f"p{f}", "")
         if not of: continue
         r_of = parse_resultado(of); r_p = parse_resultado(pred)
         if not r_of or not r_p: continue
+        if r_of[0]==r_p[0]: signos += 1
         if r_of[1]==r_p[1] and r_of[2]==r_p[2]:
             p += baremo["resultado_exacto"]; exactos += 1
         elif r_of[0]==r_p[0] and (r_of[1]==r_p[1] or r_of[2]==r_p[2]): p += baremo["resultado_un_gol"]
         elif r_of[0]==r_p[0]: p += baremo["resultado_signo"]
         elif r_of[1]==r_p[1] or r_of[2]==r_p[2]: p += baremo["un_gol_falla"]
-    det["partidos"] = p; det["exactos"] = exactos; pts += p
+    det["partidos"] = p; det["exactos"] = exactos; det["signos"] = signos; pts += p
     # Posiciones grupo
     pp = 0
     for f, pred in jugador["posiciones"].items():
@@ -365,6 +366,7 @@ def clasificacion():
             <td class="tendencia">{tend}</td>
             <td>{det['partidos']}</td>
             <td class="exactos">{det['exactos']}</td>
+            <td class="exactos" style="color:#a0df4a">{det['signos']}</td>
             <td>{det['posiciones']}</td>
             <td>{det['dieciseisavos']}</td><td>{det['octavos']}</td>
             <td>{det['cuartos']}</td><td>{det['semis']}</td>
@@ -383,7 +385,7 @@ def clasificacion():
             <thead><tr>
                 <th>#</th><th style="text-align:left">Jugador</th>
                 <th>TOTAL</th><th>Tend.</th>
-                <th>Pts<br>Grupos</th><th>🎯<br>Exactos</th><th>Clasif.<br>Grupos</th>
+                <th>Pts<br>Grupos</th><th>🎯<br>Exactos</th><th>✓<br>Signos</th><th>Clasif.<br>Grupos</th>
                 <th>1/16</th><th>1/8</th><th>1/4</th><th>1/2</th>
                 <th>Final</th><th>Campeón</th><th style="font-size:0.75em">Campeón</th><th style="font-size:0.75em">Finalista</th><th style="font-size:0.75em">Finalista</th><th style="font-size:0.75em">Goleador</th>
             </tr></thead>
